@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { getPeople, getSite, recordVisit, type Via } from '@/lib/api';
+import { getPeople, getSite, recordVisit, searchSites, type Via } from '@/lib/api';
 import { normalizeAddress } from '@/lib/address';
 import {
   back,
@@ -16,17 +16,25 @@ import {
   type Page,
 } from '@/lib/nav';
 import { SiteFrame } from './SiteFrame';
+import { SearchResults } from './SearchResults';
+import { HistoryPanel } from './HistoryPanel';
+import { PublishForm } from './PublishForm';
 import styles from './Browser.module.css';
 
 let nextId = 1;
+const OFFLINE = 'Cannot reach the API on port 4000.';
 
 export function Browser() {
   const [people, setPeople] = useState<string[]>([]);
   const [person, setPerson] = useState('');
   const [navs, setNavs] = useState<Record<string, Nav>>({}); // one session per person
-  const [draft, setDraft] = useState<string | null>(null); // what is typed, until it loads
+  const [draft, setDraft] = useState<string | null>(null); // address typed, until it loads
+  const [qDraft, setQDraft] = useState<string | null>(null); // search typed, until it runs
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [tick, setTick] = useState(0); // bumps when a visit is recorded, so history refreshes
   const reqRef = useRef(0); // lets a newer navigation cancel an older one
   const scrollRef = useRef<(() => number) | null>(null);
 
@@ -36,20 +44,30 @@ export function Browser() {
         setPeople(list);
         setPerson(list[0] ?? '');
       })
-      .catch(() => setError('Cannot reach the API on port 4000.'));
+      .catch(() => setError(OFFLINE));
   }, []);
 
   const nav = navs[person] ?? empty;
   const entry = current(nav);
   const shown = entry?.kind === 'site' ? entry.address : '';
+  const shownQuery = entry?.kind === 'search' ? entry.query : '';
 
   const update = (p: string, fn: (n: Nav) => Nav) =>
     setNavs((prev) => ({ ...prev, [p]: fn(prev[p] ?? empty) }));
 
-  const logVisit = (address: string, via: Via, status: Page['status']) =>
-    recordVisit({ person, address, via, status }).catch(() => {});
+  // Remember where the page in front of us was scrolled to, before we leave it.
+  function rememberScroll(p: string) {
+    const y = scrollRef.current?.();
+    if (y != null) update(p, (n) => saveScroll(n, y));
+  }
 
-  // Typed address or followed link. The old page stays up until the new one has loaded.
+  const logVisit = (address: string, via: Via, status: Page['status']) =>
+    recordVisit({ person, address, via, status })
+      .then(() => setTick((t) => t + 1))
+      .catch(() => {});
+
+  // Typed address, followed link, search result or history item.
+  // The old page stays up until the new one has loaded.
   async function go(raw: string, via: Via) {
     const address = normalizeAddress(raw);
     if (!person || !address) return;
@@ -57,9 +75,8 @@ export function Browser() {
     const token = ++reqRef.current;
     setLoading(true);
     setError('');
-
-    const y = scrollRef.current?.();
-    if (y != null) update(p, (n) => saveScroll(n, y));
+    setPublishing(false);
+    rememberScroll(p);
 
     let page: Page;
     try {
@@ -68,7 +85,7 @@ export function Browser() {
     } catch {
       if (token === reqRef.current) {
         setLoading(false);
-        setError('Cannot reach the API on port 4000.');
+        setError(OFFLINE);
       }
       return;
     }
@@ -81,12 +98,44 @@ export function Browser() {
     void logVisit(address, via, page.status);
   }
 
+  // A search is a place in history too, so Back can return to its results.
+  async function runSearch(raw: string) {
+    const query = raw.trim();
+    if (!person || !query) return;
+    const p = person;
+    const token = ++reqRef.current;
+    setLoading(true);
+    setError('');
+    setPublishing(false);
+    rememberScroll(p);
+
+    let hits;
+    try {
+      hits = await searchSites(query);
+    } catch {
+      if (token === reqRef.current) {
+        setLoading(false);
+        setError(OFFLINE);
+      }
+      return;
+    }
+    if (token !== reqRef.current) return;
+
+    const e = { id: nextId++, kind: 'search' as const, query, scrollY: 0, hits };
+    update(p, (n) => visit(n, e));
+    setQDraft(null);
+    setDraft(null);
+    setLoading(false);
+  }
+
   function step(dir: -1 | 1) {
     const target = nav.entries[nav.index + dir];
     if (!person || !target) return;
     reqRef.current++; // cancel anything still loading
     setLoading(false);
     setDraft(null);
+    setQDraft(null);
+    setPublishing(false);
     const y = scrollRef.current?.();
     update(person, (n) => {
       const saved = y != null ? saveScroll(n, y) : n;
@@ -101,16 +150,23 @@ export function Browser() {
     reqRef.current++;
     setLoading(false);
     setDraft(null);
+    setQDraft(null);
+    setPublishing(false);
     setPerson(name);
   }
 
-  let view: ReactNode = null;
+  function openPublish() {
+    if (person) rememberScroll(person);
+    setPublishing(true);
+  }
+
+  let view: ReactNode;
   if (!entry) {
     view = (
       <div className={styles.notice}>
         <h1>Small Web</h1>
         <p>
-          Type an address above, for example <code>index.zz</code>.
+          Type an address above, for example <code>index.zz</code>, or search the whole web.
         </p>
       </div>
     );
@@ -132,6 +188,17 @@ export function Browser() {
           <code>{entry.address}</code> leads nowhere. Nothing was ever published there.
         </p>
       </div>
+    );
+  } else {
+    view = (
+      <SearchResults
+        key={entry.id}
+        query={entry.query}
+        hits={entry.hits}
+        scrollY={entry.scrollY}
+        onOpen={(a) => void go(a, 'search')}
+        scrollRef={scrollRef}
+      />
     );
   }
 
@@ -162,6 +229,31 @@ export function Browser() {
             aria-label="Address"
           />
         </form>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void runSearch(qDraft ?? shownQuery);
+          }}
+        >
+          <input
+            className={styles.search}
+            value={qDraft ?? shownQuery}
+            onChange={(e) => setQDraft(e.target.value)}
+            placeholder="Search the web"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Search"
+          />
+        </form>
+        <button
+          className={`${styles.tool} ${historyOpen ? styles.toolOn : ''}`}
+          onClick={() => setHistoryOpen((o) => !o)}
+        >
+          History
+        </button>
+        <button className={styles.tool} onClick={openPublish} disabled={!person}>
+          Publish
+        </button>
         <select
           className={styles.person}
           value={person}
@@ -177,7 +269,32 @@ export function Browser() {
       </header>
       {error && <div className={styles.error}>{error}</div>}
       <div className={loading ? styles.progress : styles.idle} />
-      <main className={styles.view}>{view}</main>
+      <div className={styles.body}>
+        <main className={styles.view}>
+          {publishing ? (
+            <PublishForm
+              key={person}
+              people={people}
+              defaultAuthor={person}
+              onCancel={() => setPublishing(false)}
+              onPublished={(address) => {
+                setPublishing(false);
+                void go(address, 'typed');
+              }}
+            />
+          ) : (
+            view
+          )}
+        </main>
+        {historyOpen && person && (
+          <HistoryPanel
+            person={person}
+            refreshKey={tick}
+            onOpen={(a) => void go(a, 'history')}
+            onClose={() => setHistoryOpen(false)}
+          />
+        )}
+      </div>
     </div>
   );
 }
