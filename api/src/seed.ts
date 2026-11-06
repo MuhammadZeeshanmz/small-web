@@ -45,7 +45,14 @@ function buildVisits() {
     let previous: string | null = null;
     let via = 'typed';
 
+    // Eli starts with a tour of the whole web, so "has been nearly everywhere" is true.
+    const tour = p.name === 'Eli' ? [...all] : [];
+
     for (let i = 0; i < p.steps; i++) {
+      if (i < tour.length) {
+        current = tour[i];
+        via = 'typed';
+      }
       visits.push({
         person: p.name,
         address: current,

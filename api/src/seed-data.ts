@@ -1,5 +1,26 @@
 export const PEOPLE = ['Amina', 'Bilal', 'Chen', 'Dara', 'Eli'];
 
+const LONG_SENTENCES = [
+  'The path follows the cliff edge for a while, then drops without warning into a cove where the wind stops.',
+  'Gulls argue over the same rock every morning, and none of them has ever won for longer than an hour.',
+  'By noon the tide has gone out far enough to reveal a floor of ribbed sand, wet and shining like metal.',
+  'A farmer sells eggs from an unattended table, with a tin for the money and a hand-painted price.',
+  'The map says there is a village here, but what remains is a chimney, a wall and a great deal of nettles.',
+  'Rain arrives from the west as a grey curtain, and for ten minutes the whole coast looks like a pencil drawing.',
+  'At dusk the lamp across the bay begins to turn, and everything before it feels like preparation.',
+];
+
+const LONG_DAYS = Array.from({ length: 16 }, (_, i) => {
+  const a = LONG_SENTENCES[i % LONG_SENTENCES.length];
+  const b = LONG_SENTENCES[(i * 3 + 2) % LONG_SENTENCES.length];
+  const c = LONG_SENTENCES[(i * 5 + 1) % LONG_SENTENCES.length];
+  const middle =
+    i === 7
+      ? '<p>Halfway along, the old tower comes into view. <a href="lighthouse.zz">Its keeper</a> keeps a careful log of this stretch.</p>'
+      : '';
+  return `<h2>Day ${i + 1}</h2>\n<p>${a} ${b}</p>\n<p>${c}</p>\n${middle}`;
+}).join('\n');
+
 export const SITES: { address: string; title: string; author: string; html: string }[] = [
   {
     address: 'tidepool.zz',
@@ -74,6 +95,15 @@ export const SITES: { address: string; title: string; author: string; html: stri
 <p>A cold soak wakes the logs up, and a week later the caps appear. Spent logs go to <a href="kiln.zz">the potter</a> for ash. My neighbour's hives are described at <a href="beekeeping.zz">Eight Frames</a>. More pages: <a href="index.zz">the index</a>.</p>`,
   },
   {
+    address: 'the-long-read.zz',
+    title: 'The Long Read',
+    author: 'Chen',
+    html: `<h1>The Long Read</h1>
+<p>A sixteen day walk along a coast, written down as it happened.</p>
+${LONG_DAYS}
+<p>The walk ends where it began. Back to <a href="index.zz">the index</a>, or follow a rumour to <a href="the-last-day.zz">the last day</a>.</p>`,
+  },
+  {
     address: 'index.zz',
     title: 'The Small Index',
     author: 'Eli',
@@ -89,6 +119,7 @@ export const SITES: { address: string; title: string; author: string; html: stri
 <li><a href="night-sky.zz">Dark Sky Notebook</a>, stargazing</li>
 <li><a href="compass-rose.zz">Compass Rose</a>, finding your way</li>
 <li><a href="mushroom-log.zz">Shiitake on Oak</a>, growing mushrooms</li>
+<li><a href="the-long-read.zz">The Long Read</a>, a sixteen day walk</li>
 <li><a href="the-big-search.zz">The Big Search</a>, a page that was never written</li>
 </ul>`,
   },

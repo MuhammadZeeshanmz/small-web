@@ -12,7 +12,9 @@ import { WebService } from './web/web.service';
     ConfigModule.forRoot({ isGlobal: true }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (c: ConfigService) => ({ uri: c.get<string>('MONGO_URI') }),
+      useFactory: (c: ConfigService) => ({
+        uri: c.get<string>('MONGO_URI') ?? 'mongodb://localhost:27017/smallweb',
+      }),
     }),
     MongooseModule.forFeature([
       { name: Site.name, schema: SiteSchema },
